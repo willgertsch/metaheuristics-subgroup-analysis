@@ -115,7 +115,7 @@ update_EM = function(Y, Z, X, beta1, beta2, sigma, gamma) {
   mu2 = Z %*% beta1
   f1 = dnorm(Y, mu1, sigma)
   f2 = dnorm(Y, mu2, sigma)
-  denoms = f1 + f2
+  denoms = p*f1 + (1-p)*f2
   W = p * f1 / denoms
 
   # M step ####
@@ -228,6 +228,7 @@ lnm_EM = function(Y, Z, X, maxiter) {
   # some random
   beta1_init = solve(t(Z) %*% Z) %*% t(Z) %*% Y # LS estimate
   beta2_init = rnorm(q1, 0, sd(Y))
+  beta2_init = abs(beta2_init[2]) # beta22 > 0
   gamma_init = rnorm(q2, 0, 2) # values from roughly +-5
   sigma_init = sd(Y)
 

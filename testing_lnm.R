@@ -189,4 +189,5 @@ df %>% arrange(ll) %>% head(4)
 
 # EM algorithm
 result = lnm_EM(Y, Z, X, 100)
-# doesn't work currently
+result
+# doesn't give a good result as for best metaheuristics
