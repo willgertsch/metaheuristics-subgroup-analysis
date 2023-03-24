@@ -186,8 +186,21 @@ df = as.data.frame(results)
 colnames(df)[8] = "ll"
 colnames(df)[9] = "alg"
 df %>% arrange(ll) %>% head(4)
+# best: DE, MFO, BHO, HS
 
 # EM algorithm
 result = lnm_EM(Y, Z, X, 100)
 result
-# doesn't give a good result as for best metaheuristics
+# doesn't give as good result as for best metaheuristics
+
+# prediction
+# DE vs EM
+class_DE = predict_class(X, c(-1.31431581238249, 1.86719412996483))
+class_EM = predict_class(X, c(-1.306024, 1.858678))
+# have the same counts
+class_DE[,1] == class_EM[,1] # exact same prediction
+
+
+# compare to geneX using classification rate
+sum(class_DE[,1] == geneX)/n
+

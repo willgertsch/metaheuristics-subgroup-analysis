@@ -270,4 +270,15 @@ lnm_EM = function(Y, Z, X, maxiter) {
   ))
 }
 
+# predict which latent class an individual is assigned to
+# X: design matrix of individual characteristics
+# gamma: gamma estimate from lnm model
+# Return: n x 2 matrix of class predictions and probabilities
+predict_class = function(X, gamma) {
 
+  eta = X %*% gamma
+  p = ilogit(eta)
+  class = ifelse(p > 0.5, 1, 0)
+  return(cbind(class, p))
+
+}
