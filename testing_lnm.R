@@ -140,7 +140,7 @@ lnm_logl(beta1, beta2, sigma, gamma, Y, Z, X)
 
 # fitting using metaheuristics
 library(metaheuristicOpt)
-result = fit_lnm(Y, Z, X, 1000, 100, "ALO")
+result = fit_lnm(Y, Z, X, 1000, 100, "DE")
 
 # test all algorithms in package
 # takes a while to run
