@@ -55,7 +55,7 @@ rlnm = function(n, mu1, mu2, eta, sigma) {
 # gamma_init: initial gamma values
 # iter: number of iterations for RN
 # Returns: updated gamma
-max_Q1 = function(X, W, gamma_init, iter) {
+max_Q1 = function(X, W, gamma_init, iter, silent) {
 
   gamma = gamma_init # initial value
   for (i in 1:iter) {
@@ -64,7 +64,8 @@ max_Q1 = function(X, W, gamma_init, iter) {
     Omega = diag(c(P * (1 - P)))
     IM = t(X) %*% Omega %*% X
     gamma = gamma + solve(IM) %*% grad
-    cat("Iteration: ", i,  ",  Gamma=", gamma, "\n")
+    if (!silent)
+      cat("Iteration: ", i,  ",  Gamma=", gamma, "\n")
   }
   return(gamma)
 }
@@ -105,7 +106,7 @@ max_Q2 = function(Y, Z, W, beta1_init, beta2_init, sigma_init) {
 
 # perform one step of the EM update
 # returns list of updated parameter values
-update_EM = function(Y, Z, X, beta1, beta2, sigma, gamma) {
+update_EM = function(Y, Z, X, beta1, beta2, sigma, gamma, silent) {
 
   eta = X %*% gamma
   p = ilogit(eta)
@@ -121,7 +122,7 @@ update_EM = function(Y, Z, X, beta1, beta2, sigma, gamma) {
   # M step ####
   # gamma update
   # how many iterations of IRLS is good?
-  gamma_t = max_Q1(X, W, gamma, 10)
+  gamma_t = max_Q1(X, W, gamma, 10, silent)
   # update beta and sigma
   result = max_Q2(Y, Z, W, beta1, beta2, sigma)
 
@@ -217,7 +218,7 @@ fit_lnm = function(Y, Z, X, iter, swarm, algorithm) {
 }
 
 # EM algorithm implementation
-lnm_EM = function(Y, Z, X, maxiter) {
+lnm_EM = function(Y, Z, X, maxiter, silent = F) {
 
   # get dimensions
   n = length(Y)
@@ -226,24 +227,24 @@ lnm_EM = function(Y, Z, X, maxiter) {
 
   # generate initial parameter values
   # some random
-  beta1_init = solve(t(Z) %*% Z) %*% t(Z) %*% Y # LS estimate
-  beta2_init = rnorm(q1, 0, sd(Y))
-  beta2_init = abs(beta2_init[2]) # beta22 > 0
-  gamma_init = rnorm(q2, 0, 2) # values from roughly +-5
-  sigma_init = sd(Y)
+  beta1 = solve(t(Z) %*% Z) %*% t(Z) %*% Y # LS estimate
+  beta2 = rnorm(q1, 0, sd(Y))
+  beta2 = abs(beta2[2]) # beta22 > 0
+  gamma = rnorm(q2, 0, 2) # values from roughly +-5
+  sigma = sd(Y)
 
   # initial update
-  result = update_EM(Y, Z, X, beta1_init, beta2_init, sigma_init, gamma_init)
+  result = update_EM(Y, Z, X, beta1, beta2, sigma, gamma, silent)
   obj = lnm_logl(result$beta1, result$beta2, result$sigma, result$gamma, Y, Z, X)
 
 
   # main loop
-  for (iter in 0:maxiter) {
+  for (iter in 1:maxiter) {
 
     obj_old = obj
 
     # update
-    result = update_EM(Y, Z, X, beta1, beta2, sigma, gamma)
+    result = update_EM(Y, Z, X, beta1, beta2, sigma, gamma, silent)
     beta1 = result$beta1
     beta2 = result$beta2
     gamma = result$gamma
