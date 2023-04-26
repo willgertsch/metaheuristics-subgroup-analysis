@@ -5,42 +5,38 @@
 
 # function for generating the LNM data
 # returns list
-generate_data = function(N, p, q2) {
-
-  beta1 = c(rnorm(1, 80, 15), rnorm(1, 0, 1)) # assuming no intervention effect
-  beta2 = c(rnorm(1, 0, 1), rnorm(1, 30, 10)) # intervention effect in subgroup
-  sigma = runif(1, 0.5, 10)
-
-  # generate classes
-  class = rbinom(N, 1, p)
+generate_data = function(N, q2, beta1, beta2, sigma, p_class) {
 
   # generate q2 covariates
   # assuming scaled between 0 and 1
   X = matrix(runif(N * q2), ncol = q2)
-  X = cbind(rep(1, N), X) # intercept
+  X = cbind(rep(1, N), X) # add intercept
 
-  # fit a logistic regression model to get gamma estimates
+  # randomly assign ~1/2 to treatment
+  # should be fine to assign first half
+  treat = c(rep(1, N/2), rep(0, N/2))
+  Z = cbind(rep(1, N), treat)
+
+  # randomly generate classes
+  class = rbinom(N, 1, p_class)
+
+  # get gamma from logistic regression
   mod = glm(class ~ X - 1, family = binomial())
   gamma = coef(mod)
 
-  # randomly assign ~1/2 to treatment
-  treat = rbinom(N, 1, 0.5)
-  Z = cbind(rep(1, N), treat)
-
+  # compute means and response data
   mu1 = Z %*% (beta1 + beta2)
   mu2 = Z %*% beta1
   eta = X %*% gamma
   Y = rlnm(N, mu1, mu2, eta, sigma)
+
 
   sim_dat = list(
     Y = Y,
     X = X,
     Z = Z,
     class = class,
-    beta1 = beta1,
-    beta2 = beta2,
-    gamma = gamma,
-    sigma = sigma
+    gamma = gamma
   )
 
   return(sim_dat)
@@ -49,7 +45,10 @@ generate_data = function(N, p, q2) {
 
 # test fitting model to this data
 set.seed(1234)
-test = generate_data(1000, 0.2, 10)
+beta1 = c(80, 0)
+beta2 = c(0, 20)
+sigma = 2
+test = generate_data(1000, 10, beta1, beta2, sigma, 0.2)
 result = fit_lnm(test$Y, test$Z, test$X, 1000, 100, "DE")
 result
 
@@ -57,27 +56,29 @@ result
 EM = lnm_EM(test$Y, test$Z, test$X, 100, silent = T)
 EM
 
-# compare against true values using L2 norm
-sum(result$beta1 - test$beta1)^2
-sum(EM$beta1 - test$beta1)^2
+# simulation study
+# main comparison metrics:
+# bias of interaction effect estimates
+# variance of interaction effect estimates
+# rate of correct classification
+# factors to vary:
+# sample size (300, 500, 700, 1000)
+# interaction effect size (10, 20, 30)
+# latent factor rate (0, 0.2, 0.5)
+# number of covariates => fix at 5
+# algorithm
 
-sum(result$beta2 - test$beta2)^2
-sum(EM$beta2 - test$beta2)^2
-
-sum(result$gamma - test$gamma)^2
-sum(EM$gamma - test$gamma)^2
-
-(result$sigma - test$sigma)^2
-(EM$sigma - test$sigma)^2
-
-sum(predict_class(test$X, result$gamma)[,1] == test$class)/1000
-sum(predict_class(test$X, EM$gamma)[,1] == test$class)/1000
+# think I just need to keep things simple and vary one factor at a time
+# in order of importance
+# algorithm
+# latent factor rate
+# interaction effect rate
 
 ################################################################################
 # Simulation study 1
 # how do different algorithms affect performance?
 ################################################################################
-#algorithms = c("DE", "MFO", "BHO", "HS")
+algorithms = c("DE", "MFO", "BHO", "HS")
 algorithms = c(
   "PSO",
   "ALO",
@@ -101,73 +102,72 @@ algorithms = c(
   #"GBS",
   "BHO"
 )
-samples = 10
-N = 1000
-p = 0.2
-q = 10
-set.seed(4321)
+algorithms = c("HS")
 
-results = numeric(6)
+# data generating parameters
+beta1 = c(80, 0)
+beta2 = c(0, 20)
+sigma = 2
+N = 500
+q2 = 10
+p_rate = 0.2
 
+# simulation parameters
+samples = 3
+iter = 1000
+swarm = 100
+
+
+# seed, ll, beta22, p
+results = rep(0, 7)
+i = 1
 for (s in 1:samples) {
 
   # generate data
-  test = generate_data(N, p, q)
+  set.seed(i)
+  test = generate_data(N, q2, beta1, beta2, sigma, p_rate)
 
+  # fit all using all algorithms
   for (alg in algorithms) {
-    cat("Sample ", s, " of ", samples, " using ", alg, "\n")
 
-    # fit model using algorithm
-    out = fit_lnm(test$Y, test$Z, test$X, 1000, 100, alg)
+    cat("Sample ", s, "/", samples, " with ", alg, "\n")
+    # fit
+    mod = fit_lnm(test$Y, test$Z, test$X, iter, swarm, alg)
 
     # save
-    results_i = c(
-      lnm_logl(out$beta1, out$beta2, out$sigma, out$gamma,
-               test$Y, test$Z, test$X),
-      sum(out$beta1 - test$beta1)^2,
-      sum(out$beta2 - test$beta2)^2,
-      sum(out$gamma - test$gamma)^2,
-      (out$sigma - test$sigma)^2,
-      sum(predict_class(test$X, out$gamma)[,1] == test$class)/N
-    )
+    p = sum(test$class == predict_class(test$X, mod$gamma)[,1])/N
+    results = rbind(results,
+                    c(
+                      i,
+                      mod$ll,
+                      mod$beta1[1],
+                      mod$beta1[2],
+                      mod$beta2[1],
+                      mod$beta2[2],
+                      p
+                      ))
 
-    results = rbind(results, results_i)
   }
-
-
-  # EM algorithm
-  out = lnm_EM(test$Y, test$Z, test$X, 100, silent = T)
-  results_i = c(
-    lnm_logl(out$beta1, out$beta2, out$sigma, out$gamma,
-             test$Y, test$Z, test$X),
-    sum(out$beta1 - test$beta1)^2,
-    sum(out$beta2 - test$beta2)^2,
-    sum(out$gamma - test$gamma)^2,
-    (out$sigma - test$sigma)^2,
-    sum(predict_class(test$X, out$gamma)[,1] == test$class)/N
-  )
-
-  results = rbind(results, results_i)
-
+  i = i + 1
 }
 
-# process results
 results = results[-1, ]
 results = as.data.frame(results)
-colnames(results) = c('ll', 'beta1', 'beta2', 'gamma', 'sigma', 'accuracy')
+colnames(results) = c("seed", "ll", "beta11", "beta12", "beta21", "beta22", "p")
 rownames(results) = NULL
-results$algorithm = rep(c('EM', algorithms), samples)
+results$algorithm = rep(algorithms, samples)
 
-# summarise
-library(dplyr)
 results %>%
   group_by(algorithm) %>%
   summarise(
-    ll = median(ll),
-    beta1 = median(beta1),
-    beta2 = median(beta2),
-    gamma = median(gamma),
-    sigma = median(sigma),
-    accuracy = median(accuracy)
+    beta11_bias = abs(mean(beta11) - beta1[1]),
+    beta11_se = sd(beta11),
+    beta12_bias = abs(mean(beta12) - beta1[2]),
+    beta12_se = sd(beta12),
+    beta21_bias = abs(mean(beta21) - beta2[1]),
+    beta21_se = sd(beta21),
+    beta22_bias = abs(mean(beta22) - beta2[2]),
+    beta22_se = sd(beta22),
+    phat = mean(p)
   ) %>%
-  arrange(desc(ll))
+  arrange(desc(phat))
