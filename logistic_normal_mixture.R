@@ -209,6 +209,7 @@ fit_lnm = function(Y, Z, X, iter, swarm, algorithm) {
   gamma = out$result[(2*q1+1):(2*q1 + q2)]
   sigma = out$result[2*q1 + q2 + 1]
   return(list(
+    ll = out$optimumValue[1],
     beta1 = beta1,
     beta2 = beta2,
     gamma = gamma,
@@ -264,6 +265,7 @@ lnm_EM = function(Y, Z, X, maxiter, silent = F) {
 
   # return
   return(list(
+    ll = obj,
     beta1 = beta1,
     beta2 = beta2,
     gamma = gamma,
