@@ -81,28 +81,28 @@ EM
 algorithms = c("DE", "MFO", "BHO", "HS")
 algorithms = c(
   "PSO",
-  "ALO",
+  #"ALO", slow
   "GWO",
-  "DA",
+ # "DA", slow
   "FFA",
   "GA",
-  "GOA",
+  #"GOA", slow
   "HS",
   "MFO",
   "SCA",
   "WOA",
   "CLONALG",
   "DE",
-  "SFL",
+  #"SFL", slow
   #"CSO", seems to broken
   #"ABC",
-  "KH",
+  #"KH", slow
   "CS",
   "BA",
   #"GBS",
   "BHO"
 )
-algorithms = c("HS")
+algorithms = c("GBS")
 
 # data generating parameters
 beta1 = c(80, 0)
@@ -113,12 +113,11 @@ q2 = 10
 p_rate = 0.2
 
 # simulation parameters
-samples = 3
+samples = 10
 iter = 1000
 swarm = 100
 
 
-# seed, ll, beta22, p
 results = rep(0, 7)
 i = 1
 for (s in 1:samples) {
@@ -171,3 +170,37 @@ results %>%
     phat = mean(p)
   ) %>%
   arrange(desc(phat))
+
+
+# repeat for EM algorithm ######################################################
+EM_results = rep(0, 7)
+i = 1
+for (s in 1:samples) {
+
+  # generate data
+  set.seed(i)
+  test = generate_data(N, q2, beta1, beta2, sigma, p_rate)
+
+  # fit
+  mod = lnm_EM(test$Y, test$Z, test$X, 100, silent = T)
+
+  # save
+  p = sum(test$class == predict_class(test$X, mod$gamma)[,1])/N
+  EM_results = rbind(EM_results,
+                  c(
+                    i,
+                    mod$ll,
+                    mod$beta1[1],
+                    mod$beta1[2],
+                    mod$beta2[1],
+                    mod$beta2[2],
+                    p
+                  ))
+  i = i + 1
+}
+
+EM_results = EM_results[-1, ]
+EM_results = as.data.frame(EM_results)
+colnames(EM_results) = c("seed", "ll", "beta11", "beta12", "beta21", "beta22", "p")
+rownames(EM_results) = NULL
+EM_results$algorithm = rep("EM", samples)

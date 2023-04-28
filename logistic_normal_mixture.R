@@ -4,6 +4,7 @@ ilogit = function(eta) {
   1/(1 + exp(-eta))
 }
 
+
 # log-likelihood
 lnm_logl = function(beta1, beta2, sigma, gamma, Y, Z, X) {
 
