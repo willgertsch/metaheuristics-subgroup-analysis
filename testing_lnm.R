@@ -208,7 +208,7 @@ sum(class_DE[,1] == geneX)/n
 # testing case where having singularity issues in EM
 set.seed(7)
 test = generate_data(500, 10, c(80,0), c(0,20), 2, 0.2)
-mod = try(lnm_EM(test$Y, test$Z, test$X, 10, silent = T), TRUE)
+mod = try(lnm_EM(test$Y, test$Z, test$X, 10, silent = T), FALSE)
 length(mod)
 if (length(mod) == 1) {
   print("The model has failed, write NA to data struct")

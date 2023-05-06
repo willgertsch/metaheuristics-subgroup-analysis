@@ -156,6 +156,7 @@ colnames(results) = c("seed", "ll", "beta11", "beta12", "beta21", "beta22", "p")
 rownames(results) = NULL
 results$algorithm = rep(algorithms, samples)
 
+library(dplyr)
 results %>%
   group_by(algorithm) %>%
   summarise(
@@ -179,23 +180,32 @@ for (s in 1:samples) {
 
   # generate data
   set.seed(i)
+  #print(i)
   test = generate_data(N, q2, beta1, beta2, sigma, p_rate)
 
   # fit
-  mod = lnm_EM(test$Y, test$Z, test$X, 100, silent = T)
+  mod = try(lnm_EM(test$Y, test$Z, test$X, 10, silent = T), TRUE)
 
-  # save
-  p = sum(test$class == predict_class(test$X, mod$gamma)[,1])/N
-  EM_results = rbind(EM_results,
-                  c(
-                    i,
-                    mod$ll,
-                    mod$beta1[1],
-                    mod$beta1[2],
-                    mod$beta2[1],
-                    mod$beta2[2],
-                    p
-                  ))
+  if (length(mod) == 1) {
+    # failure, usually due to singularity from bad random start
+    EM_results = rbind(EM_results, c(i, rep(NA, 6)))
+  }
+  else {
+    # save
+    p = sum(test$class == predict_class(test$X, mod$gamma)[,1])/N
+    EM_results = rbind(EM_results,
+                       c(
+                         i,
+                         mod$ll,
+                         mod$beta1[1],
+                         mod$beta1[2],
+                         mod$beta2[1],
+                         mod$beta2[2],
+                         p
+                       ))
+  }
+
+
   i = i + 1
 }
 
@@ -204,3 +214,22 @@ EM_results = as.data.frame(EM_results)
 colnames(EM_results) = c("seed", "ll", "beta11", "beta12", "beta21", "beta22", "p")
 rownames(EM_results) = NULL
 EM_results$algorithm = rep("EM", samples)
+
+# combine
+combined_results = rbind(results, EM_results)
+combined_results %>%
+  group_by(algorithm) %>%
+  summarise(
+    beta11_bias = abs(mean(beta11, na.rm = T) - beta1[1]),
+    beta11_se = sd(beta11, na.rm = T),
+    beta12_bias = abs(mean(beta12, na.rm = T) - beta1[2]),
+    beta12_se = sd(beta12, na.rm = T),
+    beta21_bias = abs(mean(beta21, na.rm = T) - beta2[1]),
+    beta21_se = sd(beta21, na.rm = T),
+    beta22_bias = abs(mean(beta22, na.rm = T) - beta2[2]),
+    beta22_se = sd(beta22, na.rm = T),
+    phat = mean(p, na.rm = T)
+  ) %>%
+  arrange(desc(phat))
+
+write.csv(combined_results, file = "sim1_results.csv")
