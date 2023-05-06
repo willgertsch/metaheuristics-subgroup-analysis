@@ -42,7 +42,7 @@ rlbm = function(n, mu1, mu2, eta, sizes) {
   }
 
   # return outcome
-  return(Y)
+  return(list(Y=Y, class=class))
 
 }
 
@@ -81,14 +81,11 @@ fit_lbm = function(Y, sizes, Z, X, iter, swarm, algorithm) {
   }
 
   # set bounds for problem
-  minY = min(Y)
-  maxY = max(Y)
-  rangeY = maxY - minY
   beta1_bounds = matrix(c(
     -10, 10, rep(c(-5, 5), q1 - 1)
   ), nrow = 2)
   beta2_bounds = matrix(c(
-    -5, 5, 0, 5, rep(c(-5, 5), q1 - 2)
+    -10, 10, 0, 5, rep(c(-5, 5), q1 - 2)
   ), nrow = 2)
   gamma_bounds = matrix(c(
     -10, 10, rep(c(-5, 5), q2 - 1)
