@@ -53,7 +53,7 @@ result = fit_lnm(test$Y, test$Z, test$X, 1000, 100, "DE")
 result
 
 # EM
-EM = lnm_EM(test$Y, test$Z, test$X, 100, silent = T)
+EM = lnm_EM(test$Y, test$Z, test$X, 10, silent = T)
 EM
 
 # simulation study

@@ -254,13 +254,13 @@ lnm_EM = function(Y, Z, X, maxiter, silent = F) {
     obj = lnm_logl(beta1, beta2, sigma, gamma, Y, Z, X)
 
     # print iteration number of objective value
-    cat("Iter: ", iter, " obj: ", obj, "\n")
+    if (!silent)
+      cat("Iter: ", iter, " obj: ", obj, "\n")
 
     # check convergence criterion
     ftolrel = 1e-12
-    if (obj - obj_old < ftolrel*(abs(obj_old)+1))
+    if (obj - obj_old >= ftolrel*(abs(obj_old)+1))
       break
-
 
   }
 
