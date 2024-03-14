@@ -1,59 +1,19 @@
 # structured mixed effects model
 # Shen and Qu (2020)
 
-library(dplyr)
+
 library(ggplot2)
 library(metaheuristicOpt)
 library(MASS)
 library(tidyr)
+library(dplyr)
 
-# data generation
-# SEM strategy
-# assuming balanced data, so no unique covariance matrix
-set.seed(1234)
-N = 1000
-time = rep(c(4,8,24,40), N)
-timepoints = length(time)/N
-ID = rep(1:N, each = timepoints)
-trt = rep(rbinom(N, 1, 0.5), each=timepoints)
-Z = cbind(rep(1, N*timepoints), time)
 
-# subgroup predictor
-gene = rbinom(N, 1, 0.2)
-X = cbind(rep(1, N), gene)
-gamma = c(-1, 2)
-p = exp(X %*% gamma)/(1 + exp(X %*% gamma))
 
-# generate from mixture
-# have to transpose and vec
-mu1 = c(1.7, 2.2, 2.2, 2.1)
-mu0 = c(0.2, 0.4, 0.6, 0.7)
-D = 1*diag(timepoints)
-subgroup = rbinom(N, 1, p)
-b = mvrnorm(N, mu0, D)
-for (i in nrow(b)) {
-  if (subgroup[i])
-    b[i, ] = mvrnorm(1, mu1, D)
-}
-epsilon = c(t(mvrnorm(N, rep(0, timepoints), 0.428*diag(timepoints))))
-alpha = c(-0.138, -0.086)
-Y = Z %*% alpha + trt * c(t(b)) + epsilon
-
-dat = data.frame(
-  ID,
-  trt,
-  time,
-  Y,
-  gene = rep(gene, each=timepoints)
-)
-dat
-
-ggplot(dat, aes(x=time, y=Y, group=ID, color=as.factor(trt))) +
-  geom_point() + geom_line() +
-  facet_wrap(~gene)
-
+################################################################################
 # data generation
 # multivariate normal strategy
+################################################################################
 
 # sample from MVN for each individual
 set.seed(1234)
@@ -98,7 +58,7 @@ generate_data = function(
     # compute subgroup membership
     eta_i= gamma[1] + gene[i]*gamma[2]
     p_i = exp(eta_i)/(1+exp(eta_i))
-    delta_i = rbinom(1, 1, p)
+    delta_i = rbinom(1, 1, p_i)
 
     mu_i = mu1 * delta_i + mu0 * (1 - delta_i)
     big_mu_i = c(Z %*% alpha + trt[i]*mu_i, mu_i)
@@ -144,9 +104,9 @@ dat = generate_data(N = 1000,
                     rho = 0.2
 )
 
-ggplot(dat, aes(x=time, y = Y, group = ID, color = as.factor(trt))) +
+ggplot(dat, aes(x=time, y = Y, group = ID, color = as.factor(gene))) +
   geom_point() + geom_line() +
-  facet_wrap(~gene)
+  facet_wrap(~trt)
 
 
 # log likelihood function
@@ -156,27 +116,64 @@ ll_fn = function(
 
   # decode parameters
   alpha = theta[1:2]
-  mu1 = theta[3:7]
-  mu0 = theta[8:11]
-  gamma = theta[12:13]
-  sigma2 = theta[14]
-  rho = theta[15]
+  mu1 = theta[3:6]
+  mu0 = theta[7:10]
+  gamma = theta[11:12]
+  sigma2 = theta[13]
+  rho = theta[14]
+
+  R = generate_AR1_cov_matrix(length(mu1), rho)
 
   # compute log-likelihood by summing lpdfs
   ll = 0
   for (i in 1:N) {
 
-    Y_i = dat %>% filter(ID == i) %>%
-      .$Y
+    # data for subject i
+    dat_i = dat %>% filter(ID == i)
+    Y_i = dat_i$Y
+    trt_i = dat_i$trt[1]
+    gene_i = dat_i$gene[1]
 
-    big_mu_i = # problem: its only normal conditional on unobserved delta_i
-      # need to use law of total probability
+    # covariance
+    Sigma_i = sigma2*(diag(trt_i, length(mu1)) + R)
+    Sigma_inv_i = solve(Sigma_i)
 
-    ll = ll -0.5*log(det(big_sigma_i)) -
-      0.5 * t(Y_i - big_mu_i) %*% inv(big_sigma_i) %*% (Y_i - big_mu_i)
+    # subgroup membership
+    eta_i = gamma[1] + gene_i*gamma[2]
+    w_i = exp(eta_i)/(1+exp(eta_i))
+
+    ll = ll - 0.5*log(det(Sigma_i)) - 0.5*t(Y_i)%*%Sigma_inv_i%*%Y_i +
+      log(w_i*exp(t(Y_i)%*%Sigma_inv_i%*%mu1 - 0.5*t(mu1)%*%Sigma_inv_i%*%mu1) +
+            (1-w_i)*exp(t(Y_i)%*%Sigma_inv_i%*%mu0 - 0.5*t(mu0)%*%Sigma_inv_i%*%mu0))
+
+
   }
+
+  ll = ll - 0.5*N*length(mu1)*log(2*pi)
+  print(as.numeric(ll))
+  return(as.numeric(ll))
 
 }
 
-
+N = 1000
+dat
 ll_fn(c(-0.138, -0.086, 1.7, 2.2, 2.2, 2.1, 0.2, 0.4, 0.6, 0.7, -1, 2, 0.5, 0.2))
+
+lower = c(-1, -1, # alpha
+          0, 0, 0, 0, # mu1
+          0, 0, 0, 0, # mu0
+          -2, 0, # gamma
+          0.1, 0.1 # sigma2, rho
+          )
+upper = c(1, 1, # alpha
+          5, 5, 5, 5, # mu1
+          3, 3, 3, 3, # mu0
+          0, 5, # gamma
+          1, 1 # sigma2, rho
+)
+
+numVar = 14
+rangeVar = rbind(lower,upper)
+
+out = metaOpt(ll_fn, optimType = "MAX", algorithm = "HS", numVar=14, rangeVar=rangeVar,
+        control = list(), seed = NULL)
