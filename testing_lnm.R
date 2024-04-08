@@ -25,7 +25,7 @@ W = df$p
 X = cbind(rep(1, 5), df$dose)
 
 # test function
-gamma = max_Q1(X, W, c(0,0), 10)
+gamma = max_Q1(X, W, c(0,0), 10, F)
 gamma
 
 # compare to model
@@ -107,7 +107,8 @@ set.seed(1234)
 beta1 = c(80, 0)
 beta2 = c(0, 30)
 gamma = c(-1.39, 1.79)
-sigma = 1
+sigma1 = 2
+sigma2 = 1
 N = 100
 sex = rbinom(N, 1, 0.4) # female = 1
 X = cbind(rep(1, N), sex)
@@ -119,7 +120,7 @@ Z = cbind(rep(1, N), treat)
 mu1 = Z %*% (beta1 + beta2)
 mu2 = Z %*% beta1
 eta = X %*% gamma
-Y = rlnm(N, mu1, mu2, eta, sigma)
+Y = rlnm(N, mu1, mu2, eta, sigma1, sigma2)
 
 df = data.frame(
   Y = Y,
@@ -136,11 +137,12 @@ ggplot(df, aes(x = Y, fill = treat)) +
 
 
 # test likelihood
-lnm_logl(beta1, beta2, sigma, gamma, Y, Z, X)
+lnm_logl(beta1, beta2, sigma1, sigma2, gamma, Y, Z, X)
 
 # fitting using metaheuristics
 library(metaheuristicOpt)
-result = fit_lnm(Y, Z, X, 1000, 100, "DE")
+result_NI = fit_lnm(Y, Z, X, 1000, 100, "DE")
+result_NI
 
 # test all algorithms in package
 # takes a while to run
@@ -189,9 +191,9 @@ df %>% arrange(ll) %>% head(4)
 # best: DE, MFO, BHO, HS
 
 # EM algorithm
-result = lnm_EM(Y, Z, X, 100)
-result
-# doesn't give as good result as for best metaheuristics
+result_EM = lnm_EM(Y, Z, X, 10)
+result_EM
+# doesn't give as good result as for best metaheuristics?
 
 # prediction
 # DE vs EM
