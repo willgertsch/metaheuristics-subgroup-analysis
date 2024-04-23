@@ -12,8 +12,8 @@ treat = rep(c(0, 1), N/2)
 Z = cbind(rep(1, N), treat)
 
 # generate random trial sizes
-sizes = sample(c(1,2,3,4,5,6), N, replace = T)
-#sizes = rep(6, N)
+#sizes = sample(c(1,2,3,4,5,6), N, replace = T)
+sizes = rep(6, N)
 
 # generate using function
 mu1 = Z %*% (beta1 + beta2)
@@ -32,6 +32,8 @@ df = data.frame(
   class = class
 )
 
+count(df, Y)
+count(df, Y, treat)
 
 # model without class knowledge
 mod = glm(cbind(Y, n) ~ treat, family = binomial(), data = df)
@@ -42,17 +44,18 @@ mod2 = glm(cbind(Y, n) ~ treat*class, family = binomial(), data = df)
 summary(mod2)
 
 
-
 # test likelihood
 lbm_logl(beta1, beta2, gamma, Y, sizes, Z, X)
 
 # fit model
 library(metaheuristicOpt)
-result = fit_lbm(Y, sizes, Z, X, 1000, 100, "PSO")
+result = fit_lbm(Y, sizes, Z, X, 1000, 100, "HS")
 result
 
 
 cbind(predict_class(X, result$gamma)[,1], class)
+library(dplyr)
+predict_class(X, result$gamma)[,1] %>% table()
 sum(predict_class(X, result$gamma)[,1] == class)/N
 
 # calculated values
