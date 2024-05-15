@@ -1,0 +1,336 @@
+---
+title: "Subgroup mixture model"
+format: html
+---
+
+```{r}
+library(dplyr)
+#library(benchtm)
+library(ggplot2)
+source("subgroup_mixture.R")
+library(metaheuristicOpt)
+```
+
+## Introduction
+
+The goal of this subgroup analysis is to find a subset of participants who responded to the treatment. The real purpose is to demonstrate the usefulness of metaheuristics.
+
+## Model
+
+Let $Y$ be the outcome of interest and be distributed according to a 2 component mixture distribution. The first component has mean
+
+$$
+\mu_0 = Z\beta_0
+$$
+
+where $Z$ is a matrix that contains the main analysis variables, usually a treatment and an intercept, but possibly also covariates. The parameter vector $\beta_0$ contains regression coefficients for the subgroup that didn't receive treatment benefit. The second mixture component models those who did receive benefit from treatment. The mean is
+
+$$
+\mu_1 = Z(\beta_0 + \beta_1)
+$$
+
+Assuming that $Y$ has pdf $f$ with mixture component pdfs $f_0$ and $f_1$, we can write
+
+$$
+f(y|Z, \beta, X, \gamma) = w f_0 + (1-w)f_1
+$$
+
+where
+
+$$
+w = \text{ilogit}(x^T\gamma)
+$$
+
+where $x$ is a vector of subgroup membership covariates and $\gamma$ is the parameter vector.
+
+Therefore we have the log-likelihood
+
+$$
+\ell(\beta, \gamma|Z,X) = \sum_{i=1}^n \log\left[ w_if_0(y_i|Z,\beta_0) + (1-w_i)f_1(y_i|Z, \beta)\right]
+$$
+
+## Data generation
+### Continuous
+```{r}
+set.seed(1234)
+X <- generate_X(1000)
+
+dat = generate_data(
+  N = 1000,
+  beta0 = c(50, 25),
+  beta1 = c(0, 20),
+  gamma = c(-1.39, 1.79, rep(0, ncol(X)-2)), # sparse
+  type = 'continuous',
+  trt_prob = 0.5,
+  X = X,
+  sigma = c(10, 15)
+)
+```
+
+Make sure to check the size of the subgroup.
+```{r}
+dat$class %>% table()
+```
+
+```{r}
+ggplot(as.data.frame(dat), aes(x = as.factor(Z.2), y = Y)) +
+  geom_boxplot() +
+  facet_wrap(~class)
+```
+
+```{r}
+# underlying biomarker
+ggplot(as.data.frame(dat), aes(x = as.factor(Z.2), y = Y)) +
+  geom_boxplot() +
+  facet_wrap(~X.X1)
+```
+
+### Binary
+```{r}
+set.seed(1234)
+X <- generate_X(1000)
+
+dat = generate_data(
+  N = 1000,
+  beta0 = c(-3, 0.7),
+  beta1 = c(0, 0.3),
+  gamma = c(-1.39, 1.79, rep(0, ncol(X)-2)),
+  type = 'binary',
+  trt_prob = 0.5,
+  X = X
+)
+```
+
+
+```{r}
+count(as.data.frame(dat), Z.2, class, Y)
+```
+
+```{r}
+# response proportions by treatment arm
+as.data.frame(dat) %>%
+  group_by(Z.2) %>%
+  summarise(n = n(), Y = sum(Y)) %>%
+  mutate(p = Y/n)
+```
+
+```{r}
+# knowledge of subgroup
+as.data.frame(dat) %>%
+  group_by(Z.2, class) %>%
+  summarise(n = n(), Y = sum(Y)) %>%
+  mutate(p = Y/n)
+```
+
+```{r}
+# treatment effect
+glm(Y ~ Z.2, family = binomial, data = as.data.frame(dat)) %>%
+  summary()
+```
+
+```{r}
+# subgroup interaction model
+glm(Y ~ Z.2*class, family = binomial, data = as.data.frame(dat)) %>%
+  summary()
+```
+
+## Count
+```{r}
+# data generation
+set.seed(1234)
+X <- generate_X(1000)
+
+dat = generate_data(
+  N = 1000,
+  beta0 = c(1, 2),
+  beta1 = c(0, 1),
+  gamma = c(-1.39, 1.79, rep(0, ncol(X)-2)),
+  type = 'count',
+  trt_prob = 0.5,
+  X = X
+)
+```
+
+```{r}
+# can clearly see multimodal
+dat$Y %>% hist()
+```
+
+
+
+## Log-likelihood function
+```{r}
+set.seed(1234)
+X <- generate_X(1000)
+
+dat = generate_data(
+  N = 1000,
+  beta0 = c(50, 25),
+  beta1 = c(0, 20),
+  gamma = c(-1.39, 1.79, rep(0, ncol(X)-2)), # sparse
+  type = 'continuous',
+  trt_prob = 0.5,
+  X = X,
+  sigma = c(10, 15)
+)
+
+ll_fun = ll_factory('continuous', dat$Y, dat$X, dat$Z)
+```
+
+```{r}
+ll_fun
+```
+
+```{r}
+ll_fun(c(50, 25, 0, 20, c(-1.39, 1.79, rep(0, ncol(X)-2)), 10, 15))
+```
+
+## Metaheuristics
+### Continuous
+```{r}
+# generate data
+set.seed(1234)
+X <- generate_X(1000)
+
+dat = generate_data(
+  N = 1000,
+  beta0 = c(50, 25),
+  beta1 = c(0, 20),
+  gamma = c(-1.39, 1.79, rep(0, ncol(X)-2)), # sparse
+  type = 'continuous',
+  trt_prob = 0.5,
+  X = X,
+  sigma = c(10, 15)
+)
+```
+
+```{r}
+rangeVar = matrix(c(0, 0, -10, 0, -5, -5, -5, 1, 1,
+                    100, 50, 10, 50, 5, 5, 5, 50, 50), nrow=2, byrow = T)
+
+ll_fun = ll_factory('continuous', dat$Y, dat$X, dat$Z)
+result = metaOpt(
+  ll_fun,
+  optimType = 'MAX',
+  algorithm = 'HS',
+  numVar = 9,
+  rangeVar = rangeVar,
+  control = list(
+    numPopulation = 40,
+    maxIter = 500
+  )
+)
+```
+
+```{r}
+result
+```
+
+```{r}
+predict_class(dat$X, c(-1.39, 1.79, rep(0, ncol(X)-2))) %>% as.data.frame()
+```
+
+
+### Binary
+```{r}
+set.seed(1234)
+X <- generate_X(1000)
+
+dat = generate_data(
+  N = 1000,
+  beta0 = c(-3, 0),
+  beta1 = c(0, 2),
+  gamma = c(-1.39, 1.79, rep(0, ncol(X)-2)),
+  type = 'binary',
+  trt_prob = 0.5,
+  X = X
+)
+```
+
+```{r}
+ll_fun = ll_factory('binary', dat$Y, dat$X, dat$Z)
+ll_fun(c(-3, 0, 0, 2, -1.39, 1.79, 0))
+```
+
+```{r}
+rangeVar = matrix(c(-5, -5, -5, 0, -5, -5, -5,
+                    5, 5, 5, 5, 5, 5, 5), nrow=2, byrow = T)
+
+
+result = metaOpt(
+  ll_fun,
+  optimType = 'MAX',
+  algorithm = 'HS',
+  numVar = 7,
+  rangeVar = rangeVar,
+  control = list(
+    numPopulation = 40,
+    maxIter = 500
+  )
+)
+```
+
+```{r}
+result
+```
+
+```{r}
+predict_class(dat$X, c(-0.9807266, 4.187103, 0.9530281)) %>% as.data.frame() %>%
+  count(V1)
+```
+
+I think the problem has to do with identifibility. See https://core.ac.uk/reader/77047153?utm_source=linkout
+
+The problem is that our distribution produces data that looks like
+```{r}
+as.data.frame(dat) %>%
+  count(Y) %>%
+  mutate(p = n/sum(n))
+```
+This might be from a bernoulli distribution with p = 0.088. The problem is that we only have two possible outcome values.
+
+### Count
+
+```{r}
+# data generation
+set.seed(1234)
+X <- generate_X(1000)
+
+dat = generate_data(
+  N = 1000,
+  beta0 = c(1, 2),
+  beta1 = c(0, 1),
+  gamma = c(-1.39, 1.79, rep(0, ncol(X)-2)),
+  type = 'count',
+  trt_prob = 0.5,
+  X = X
+)
+```
+
+```{r}
+ll_fun = ll_factory('count', dat$Y, dat$X, dat$Z)
+ll_fun(c(1, 2, 0, 1, -1.39, 1.79, 0))
+```
+
+```{r}
+rangeVar = matrix(c(-5, -5, -5, 0, -5, -5, -5,
+                    5, 5, 5, 5, 5, 5, 5), nrow=2, byrow = T)
+
+
+result = metaOpt(
+  ll_fun,
+  optimType = 'MAX',
+  algorithm = 'DE',
+  numVar = 7,
+  rangeVar = rangeVar,
+  control = list(
+    numPopulation = 100,
+    maxIter = 1000
+  )
+)
+```
+
+```{r}
+result
+```
+This one seems to work, but is more difficult than the normal case.
