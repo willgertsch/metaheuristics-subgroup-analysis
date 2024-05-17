@@ -73,16 +73,16 @@ dat$class %>% table()
 ```
 
 ```{r}
-ggplot(as.data.frame(dat), aes(x = as.factor(Z.2), y = Y)) +
+ggplot(as.data.frame(dat), aes(x = as.factor(class), y = Y)) +
   geom_boxplot() +
-  facet_wrap(~class)
+  facet_wrap(~Z.2)
 ```
 
 ```{r}
 # underlying biomarker
-ggplot(as.data.frame(dat), aes(x = as.factor(Z.2), y = Y)) +
+ggplot(as.data.frame(dat), aes(x = as.factor(X.X1), y = Y)) +
   geom_boxplot() +
-  facet_wrap(~X.X1)
+  facet_wrap(~Z.2)
 ```
 
 ### Binary
@@ -157,35 +157,7 @@ dat$Y %>% hist()
 ```
 
 
-
-## Log-likelihood function
-```{r}
-set.seed(1234)
-X <- generate_X(1000)
-
-dat = generate_data(
-  N = 1000,
-  beta0 = c(50, 25),
-  beta1 = c(0, 20),
-  gamma = c(-1.39, 1.79, rep(0, ncol(X)-2)), # sparse
-  type = 'continuous',
-  trt_prob = 0.5,
-  X = X,
-  sigma = c(10, 15)
-)
-
-ll_fun = ll_factory('continuous', dat$Y, dat$X, dat$Z)
-```
-
-```{r}
-ll_fun
-```
-
-```{r}
-ll_fun(c(50, 25, 0, 20, c(-1.39, 1.79, rep(0, ncol(X)-2)), 10, 15))
-```
-
-## Metaheuristics
+## Fitting the model
 ### Continuous
 ```{r}
 # generate data
@@ -205,29 +177,33 @@ dat = generate_data(
 ```
 
 ```{r}
+table(dat$class)
+```
+
+```{r}
 rangeVar = matrix(c(0, 0, -10, 0, -5, -5, -5, 1, 1,
                     100, 50, 10, 50, 5, 5, 5, 50, 50), nrow=2, byrow = T)
+# 
+# ll_fun = ll_factory('continuous', dat$Y, dat$X, dat$Z)
+# result = metaOpt(
+#   ll_fun,
+#   optimType = 'MAX',
+#   algorithm = 'HS',
+#   numVar = 9,
+#   rangeVar = rangeVar,
+#   control = list(
+#     numPopulation = 40,
+#     maxIter = 500
+#   )
+# )
 
-ll_fun = ll_factory('continuous', dat$Y, dat$X, dat$Z)
-result = metaOpt(
-  ll_fun,
-  optimType = 'MAX',
-  algorithm = 'HS',
-  numVar = 9,
-  rangeVar = rangeVar,
-  control = list(
-    numPopulation = 40,
-    maxIter = 500
-  )
-)
+set.seed(1124)
+mod = fit_model('continuous', dat$Y, dat$X, dat$Z, swarm = 100, maxIter = 500,
+                algorithm = 'DE', rangeVar = rangeVar)
 ```
 
 ```{r}
-result
-```
-
-```{r}
-predict_class(dat$X, c(-1.39, 1.79, rep(0, ncol(X)-2))) %>% as.data.frame()
+summary.subgroup(mod)
 ```
 
 
@@ -248,37 +224,18 @@ dat = generate_data(
 ```
 
 ```{r}
-ll_fun = ll_factory('binary', dat$Y, dat$X, dat$Z)
-ll_fun(c(-3, 0, 0, 2, -1.39, 1.79, 0))
-```
-
-```{r}
 rangeVar = matrix(c(-5, -5, -5, 0, -5, -5, -5,
                     5, 5, 5, 5, 5, 5, 5), nrow=2, byrow = T)
 
 
-result = metaOpt(
-  ll_fun,
-  optimType = 'MAX',
-  algorithm = 'HS',
-  numVar = 7,
-  rangeVar = rangeVar,
-  control = list(
-    numPopulation = 40,
-    maxIter = 500
-  )
-)
+set.seed(1124)
+mod = fit_model('binary', dat$Y, dat$X, dat$Z, swarm = 100, maxIter = 500,
+                algorithm = 'DE')
 ```
 
 ```{r}
-result
+summary.subgroup(mod)
 ```
-
-```{r}
-predict_class(dat$X, c(-0.9807266, 4.187103, 0.9530281)) %>% as.data.frame() %>%
-  count(V1)
-```
-
 I think the problem has to do with identifibility. See https://core.ac.uk/reader/77047153?utm_source=linkout
 
 The problem is that our distribution produces data that looks like
@@ -308,29 +265,42 @@ dat = generate_data(
 ```
 
 ```{r}
-ll_fun = ll_factory('count', dat$Y, dat$X, dat$Z)
-ll_fun(c(1, 2, 0, 1, -1.39, 1.79, 0))
-```
-
-```{r}
 rangeVar = matrix(c(-5, -5, -5, 0, -5, -5, -5,
                     5, 5, 5, 5, 5, 5, 5), nrow=2, byrow = T)
 
 
-result = metaOpt(
-  ll_fun,
-  optimType = 'MAX',
-  algorithm = 'DE',
-  numVar = 7,
-  rangeVar = rangeVar,
-  control = list(
-    numPopulation = 100,
-    maxIter = 1000
-  )
+set.seed(1124)
+mod = fit_model('count', dat$Y, dat$X, dat$Z, swarm = 100, maxIter = 500,
+                algorithm = 'DE')
+```
+
+```{r}
+summary.subgroup(mod)
+```
+This one seems to work, but may be more difficult than the continuous case still.
+
+## Controlling for baseline
+In practice, we usually care more about the covariate adjusted treatment effect. We usually want to adjust for baseline.
+```{r}
+# generate data
+set.seed(1234)
+X <- generate_X(1000)
+
+dat = generate_data(
+  N = 1000,
+  beta0 = c(50, 25, 10),
+  beta1 = c(0, 20, 0),
+  gamma = c(-1.39, 1.79, rep(0, ncol(X)-2), 0.5), # sparse
+  type = 'continuous',
+  trt_prob = 0.5,
+  X = X,
+  sigma = c(10, 15)
 )
 ```
 
 ```{r}
-result
+lm(Y ~ Z.V2 + Z.baseline_var, data = as.data.frame(dat)) %>%
+  summary()
 ```
-This one seems to work, but is more difficult than the normal case.
+
+
