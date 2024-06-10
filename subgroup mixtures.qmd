@@ -303,4 +303,15 @@ lm(Y ~ Z.V2 + Z.baseline_var, data = as.data.frame(dat)) %>%
   summary()
 ```
 
+Now fit the subgroup model to this data.
+```{r}
+set.seed(1124)
+mod = fit_model('continuous', dat$Y, dat$X, dat$Z, swarm = 100, maxIter = 500,
+                algorithm = 'DE')
+```
 
+```{r}
+summary.subgroup(mod)
+```
+
+Seems to do ok, but might need more iterations and/or tuning.

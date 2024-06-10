@@ -105,14 +105,22 @@ ilogit = function(eta) {
 #
 ll_factory = function(type, Y, X, Z) {
 
+  dimZ = ncol(Z)
+  dimX = ncol(X)
   if (type == 'continuous') {
     ll_fun = function(var) {
-      beta0 = var[1:2]
-      beta1 = var[3:4]
-      gamma = var[5:(4+ncol(X))]
-      sigma = var[(5+ncol(X)):length(var)]
+      # beta0 = var[1:2]
+      # beta1 = var[3:4]
+      # gamma = var[5:(4+ncol(X))]
+      # sigma = var[(5+ncol(X)):length(var)]
+
+      beta0 = var[1:dimZ]
+      beta1 = var[(dimZ + 1):(2*dimZ)]
+      gamma = var[(2*dimZ + 1):(2*dimZ + dimX)]
+      sigma = var[(2*dimZ + dimX + 1):(2*dimZ + dimX + 2)]
 
       # check constraint
+      # looking for treatment effect difference
       if (beta1[2] <= 0)
         return(-Inf)
 
@@ -133,9 +141,12 @@ ll_factory = function(type, Y, X, Z) {
 
     ll_fun = function(var) {
 
-      beta0 = var[1:2]
-      beta1 = var[3:4]
-      gamma = var[5:(4+ncol(X))]
+      # beta0 = var[1:2]
+      # beta1 = var[3:4]
+      # gamma = var[5:(4+ncol(X))]
+      beta0 = var[1:dimZ]
+      beta1 = var[(dimZ + 1):(2*dimZ)]
+      gamma = var[(2*dimZ + 1):(2*dimZ + dimX)]
 
       # check constraint
       if (beta1[2] <= 0)
@@ -157,9 +168,12 @@ ll_factory = function(type, Y, X, Z) {
   else if (type == 'count') {
     ll_fun = function(var) {
 
-      beta0 = var[1:2]
-      beta1 = var[3:4]
-      gamma = var[5:(4+ncol(X))]
+      # beta0 = var[1:2]
+      # beta1 = var[3:4]
+      # gamma = var[5:(4+ncol(X))]
+      beta0 = var[1:dimZ]
+      beta1 = var[(dimZ + 1):(2*dimZ)]
+      gamma = var[(2*dimZ + 1):(2*dimZ + dimX)]
 
       # check constraint
       if (beta1[2] <= 0)
@@ -188,7 +202,7 @@ ll_factory = function(type, Y, X, Z) {
 # model fitting function
 # type: continuous, binary, count
 # Y: outcome
-# X: subgroup design matrix
+# X: subgroup design matrix => treatment indicator should always be second
 # Z: outcome model design matrix
 # swarm: population size for algorithm
 # maxIter: maximum number of iterations
@@ -198,6 +212,12 @@ fit_model = function(type, Y, X, Z, swarm = 40, maxIter = 500, algorithm, rangeV
 
   # get likelihood function
   ll_fun = ll_factory(type, Y, X, Z)
+
+  dimZ = ncol(Z)
+  dimX = ncol(X)
+
+  if (dimZ > 3 | dimZ < 2)
+    stop("Z model is not supported.")
 
   # set variable bounds
   # setting reasonable bounds for logistic variables.
@@ -211,27 +231,61 @@ fit_model = function(type, Y, X, Z, swarm = 40, maxIter = 500, algorithm, rangeV
       maxY = max(Y)
       rangeY = maxY - minY
       sdY = sd(Y)
-      rangeVar = matrix(c(
-      minY, -rangeY, -rangeY, 0, rep(logOR_lb, ncol(X)), 0.1, 0.1,
-      maxY, rangeY, rangeY, rangeY, rep(logOR_ub, ncol(X)), sdY, sdY
-      ),
-      nrow = 2, byrow = T)
+
+      # switch depending on ANOVA or ANCOVA
+      if (dimZ == 2) {
+        rangeVar = matrix(c(
+          minY, -rangeY, -rangeY, 0, rep(logOR_lb, ncol(X)), 0.1, 0.1,
+          maxY, rangeY, rangeY, rangeY, rep(logOR_ub, ncol(X)), sdY, sdY
+        ),
+        nrow = 2, byrow = T)
+      }
+      else if (dimZ == 3) {
+        rangeVar = matrix(c(
+          minY, -rangeY, -rangeY, minY, 0, -rangeY, rep(logOR_lb, ncol(X)), 0.1, 0.1,
+          maxY, rangeY, rangeY, minY, rangeY, rangeY, rep(logOR_ub, ncol(X)), sdY, sdY
+        ),
+        nrow = 2, byrow = T)
+      }
+
     }
     else if (type == 'binary') {
-      rangeVar = matrix(c(
-        logOR_lb, logOR_lb, logOR_lb, 0, rep(logOR_lb, ncol(X)),
-        logOR_ub, logOR_ub, logOR_ub, logOR_ub, rep(logOR_ub, ncol(X))
-      ),
-      nrow = 2, byrow = T)
+
+      # switch depending on ANOVA or ANCOVA
+      if (dimZ == 2) {
+        rangeVar = matrix(c(
+          logOR_lb, logOR_lb, logOR_lb, 0, rep(logOR_lb, ncol(X)),
+          logOR_ub, logOR_ub, logOR_ub, logOR_ub, rep(logOR_ub, ncol(X))
+        ),
+        nrow = 2, byrow = T)
+      }
+      else if (dimZ == 3) {
+        rangeVar = matrix(c(
+          logOR_lb, logOR_lb, logOR_lb, logOR_lb, 0, logOR_lb, rep(logOR_lb, ncol(X)),
+          logOR_ub, logOR_ub, logOR_ub, logOR_ub, logOR_ub, logOR_ub, rep(logOR_ub, ncol(X))
+        ),
+        nrow = 2, byrow = T)
+      }
+
     }
     else if (type == 'count') {
 
       # think the OR bounds will also be find for Poisson regression
-      rangeVar = matrix(c(
-        logOR_lb, logOR_lb, logOR_lb, 0, rep(logOR_lb, ncol(X)),
-        logOR_ub, logOR_ub, logOR_ub, logOR_ub, rep(logOR_ub, ncol(X))
-      ),
-      nrow = 2, byrow = T)
+      # switch depending on ANOVA or ANCOVA
+      if (dimZ == 2) {
+        rangeVar = matrix(c(
+          logOR_lb, logOR_lb, logOR_lb, 0, rep(logOR_lb, ncol(X)),
+          logOR_ub, logOR_ub, logOR_ub, logOR_ub, rep(logOR_ub, ncol(X))
+        ),
+        nrow = 2, byrow = T)
+      }
+      else if (dimZ == 3) {
+        rangeVar = matrix(c(
+          logOR_lb, logOR_lb, logOR_lb, logOR_lb, 0, logOR_lb, rep(logOR_lb, ncol(X)),
+          logOR_ub, logOR_ub, logOR_ub, logOR_ub, logOR_ub, logOR_ub, rep(logOR_ub, ncol(X))
+        ),
+        nrow = 2, byrow = T)
+      }
     }
   }
 
@@ -250,9 +304,14 @@ fit_model = function(type, Y, X, Z, swarm = 40, maxIter = 500, algorithm, rangeV
 
   # extract results
   param = as.numeric(result$result)
-  beta1 = param[1:2]
-  beta2 = param[3:4]
-  gamma = param[5:(5 + ncol(X) - 1)]
+  # beta1 = param[1:2]
+  # beta2 = param[3:4]
+  # gamma = param[5:(5 + ncol(X) - 1)]
+  beta0 = param[1:dimZ]
+  beta1 = param[(dimZ + 1):(2*dimZ)]
+  gamma = param[(2*dimZ + 1):(2*dimZ + dimX)]
+  sigma = param[(2*dimZ + dimX + 1):(2*dimZ + dimX + 2)]
+
   if (type == 'continuous')
     sigma = tail(param, 2)
   else
@@ -260,8 +319,8 @@ fit_model = function(type, Y, X, Z, swarm = 40, maxIter = 500, algorithm, rangeV
 
 
   return(list(
+    beta0 = beta0,
     beta1 = beta1,
-    beta2 = beta2,
     gamma = gamma,
     sigma = sigma,
     algorithm = algorithm,
@@ -293,9 +352,9 @@ summary.subgroup = function(mod) {
 
   cat(mod$type, "logistic-mixture model fit using", mod$algorithm, '\n')
   cat("Log-likelihood:", mod$ll, '\n')
-  cat("Estimated treatment effect for s=0:", mod$beta1[2], '\n')
-  cat("Estimated treatment effect for s=1:", mod$beta1[2] + mod$beta2[2], '\n')
-  cat('Treatment effect increase:', mod$beta2[2], '\n')
+  cat("Estimated treatment effect for s=0:", mod$beta0[2], '\n')
+  cat("Estimated treatment effect for s=1:", mod$beta0[2] + mod$beta1[2], '\n')
+  cat('Treatment effect increase:', mod$beta1[2], '\n')
 
   class_dat = predict_class(mod)
   cat('Subgroup:', table(class_dat$class), '\n')
