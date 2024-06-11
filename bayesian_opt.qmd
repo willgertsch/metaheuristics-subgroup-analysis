@@ -1,0 +1,202 @@
+---
+title: "Bayesian optimization"
+format: html
+editor: visual
+---
+
+# Introduction
+The goal of this project is to use Bayesian optimization to do parameter tuning for fitting the subgroup model. I am interested in primarily the number of iterations, swarm size, and algorithm for now. There are some algorithm specific parmeters, but these can wait until we have chosen the best algorithms.
+
+```{r}
+library(dplyr)
+#library(benchtm)
+library(ggplot2)
+source("subgroup_mixture.R")
+library(metaheuristicOpt)
+library(rBayesianOptimization)
+```
+# What is Bayesian optimization anyways?
+It good for expensive functions. Gaussian process.
+
+# Continuous with DE
+```{r}
+# function to tune on
+fitness = function(maxIter, swarm) {
+  
+  # fit model
+  mod = suppressWarnings(fit_model('continuous', dat$Y, dat$X, dat$Z, swarm = floor(swarm), maxIter = floor(maxIter),
+                algorithm = 'DE'))
+  
+  result = list(Score = mod$ll, Pred = 0)
+  return(result)
+}
+```
+
+```{r}
+# set up
+search_bound = list(
+  maxIter = c(20, 3000),
+  swarm = c(5, 200)
+)
+```
+
+```{r}
+# run Bayesian optimization
+set.seed(250)
+# initial sample
+search_grid = data.frame(
+  maxIter = floor(runif(20, 20, 3000)),
+  swarm = floor(runif(20, 5, 200))
+)
+
+# generate data
+  X <- generate_X(1000)
+  
+  dat = generate_data(
+    N = 1000,
+    beta0 = c(50, 25),
+    beta1 = c(0, 20),
+    gamma = c(-1.39, 1.79, rep(0, ncol(X) - 2)),
+    # sparse
+    type = 'continuous',
+    trt_prob = 0.5,
+    X = X,
+    sigma = c(10, 15)
+  )
+
+bayes_opt_DE = BayesianOptimization(
+  FUN = fitness,
+  bounds = search_bound,
+  init_grid_dt = search_grid,
+  init_points = 0,
+  n_iter = 10,
+  acq = 'ei'
+)
+```
+
+```{r}
+bayes_opt_DE
+```
+It found reasonable values for the swarm size and max iterations. Can we beat this by just doing the max?
+
+```{r}
+test_max = fitness(3000, 200)
+```
+
+```{r}
+test_max
+```
+Getting the max value which is good.
+
+```{r}
+test_max2 = fitness(1467, 191)
+```
+
+```{r}
+test_max2
+```
+Get a repeat of the same result. 
+
+Can we get some insight out of plotting the values?
+```{r}
+bayes_opt_DE$History %>%
+  ggplot(aes(x = maxIter, y = Value)) +
+  geom_point() +geom_smooth()
+```
+```{r}
+bayes_opt_DE$History %>%
+  ggplot(aes(x = swarm, y = Value)) +
+  geom_point() +geom_smooth()
+```
+
+```{r}
+bayes_opt_DE$History %>%
+  arrange(desc(Value), swarm, maxIter)
+```
+
+There are some times we get lucky, but it seems that swarm size is the most important. We need at least 100. I should even go 150 for this problem.
+
+# Algorithm choice
+I think you need numerical input variables to run Bayesian optimization? We can turn a list of algorithms into a numerical variable by indexing.
+
+```{r}
+# function to tune on
+fitness = function(maxIter, swarm, alg_num) {
+  
+  # pre-screened list of algorithms from another project
+  algorithms = c(
+  "PSO",
+  "GWO",
+  "HS",
+  "MFO",
+  "WOA",
+  "DE",
+  "DE"
+)
+  algorithm = algorithms[floor(alg_num)]
+  
+  
+  
+  # fit model
+  mod = suppressWarnings(fit_model('continuous', dat$Y, dat$X, dat$Z, swarm = floor(swarm), maxIter = floor(maxIter),
+                algorithm = algorithm))
+  
+  result = list(Score = mod$ll, Pred = 0)
+  return(result)
+}
+```
+
+```{r}
+# set up
+search_bound = list(
+  maxIter = c(20, 3000),
+  swarm = c(5, 200),
+  alg_num = c(1, 8)
+)
+# have to do one more than length of algorithms because otherwise it doesn't get included
+```
+
+
+```{r}
+# run Bayesian optimization
+set.seed(508)
+# initial sample
+search_grid = data.frame(
+  maxIter = floor(runif(20, 20, 3000)),
+  swarm = floor(runif(20, 5, 200)),
+  alg_num = floor(runif(20, 1, 8))
+)
+
+# generate data
+  X <- generate_X(1000)
+  
+  dat = generate_data(
+    N = 1000,
+    beta0 = c(50, 25),
+    beta1 = c(0, 20),
+    gamma = c(-1.39, 1.79, rep(0, ncol(X) - 2)),
+    # sparse
+    type = 'continuous',
+    trt_prob = 0.5,
+    X = X,
+    sigma = c(10, 15)
+  )
+
+bayes_opt = BayesianOptimization(
+  FUN = fitness,
+  bounds = search_bound,
+  init_grid_dt = search_grid,
+  init_points = 0,
+  n_iter = 10,
+  acq = 'ei'
+)
+```
+
+```{r}
+bayes_opt$History %>%
+  arrange(desc(Value))
+```
+
+Best algorithms are WOA and DE. This seems to be seed dependent unfortunately as I was getting PSO before. This run didn't even seem to touch PSO. 
+
+My conclusion from this is that Bayesian optimization (at least in this implementation) is useless for categorical input variables. 
