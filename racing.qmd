@@ -1,0 +1,109 @@
+---
+title: "Algorithm tuning using the racing algorithm"
+format: html
+---
+
+```{r}
+library(dplyr)
+#library(benchtm)
+library(ggplot2)
+source("subgroup_mixture.R")
+library(metaheuristicOpt)
+library(irace)
+```
+
+# Introduction
+Can we get better performance by tuning the algorithms? We can test this using the racing algorithm.
+
+# Racing algorithm
+Compare different configurations of the algorithms and select the best.
+
+# Tuning continuous model with subgroup effect
+## Tuning swarm size and maximum iterations
+```{r}
+# generate data
+set.seed(1234)
+X <- generate_X(1000)
+
+dat = generate_data(
+  N = 1000,
+  beta0 = c(50, 25),
+  beta1 = c(0, 20),
+  gamma = c(-1.39, 1.79, rep(0, ncol(X)-2)), # sparse
+  type = 'continuous',
+  trt_prob = 0.5,
+  X = X,
+  sigma = c(10, 15)
+)
+```
+
+```{r}
+# fit the model with default
+set.seed(1124)
+mod = fit_model('continuous', dat$Y, dat$X, dat$Z, swarm = 100, maxIter = 500,
+                algorithm = 'DE')
+```
+
+```{r}
+summary.subgroup(mod)
+```
+
+```{r}
+# generate instances
+# just doing one variation of the problem for now
+```
+
+```{r}
+# define parameters table
+parameters_table <- '
+  swarm "" i (10, 200)
+  maxIter "" i (50, 1000)
+  '
+parameters = readParameters(text = parameters_table)
+```
+
+```{r}
+# define runner
+target_runner = function(experiment, scenario) {
+  
+  instance <- experiment$instance
+  configuration <- experiment$configuration
+  
+  # looks for smallest value
+  ll = -suppressWarnings(withr::with_seed(experiment$seed, fit_model('continuous', dat$Y, dat$X, 
+                                                   dat$Z, 
+                                                   swarm = as.numeric(configuration[["swarm"]]),
+                                                   maxIter = as.numeric(configuration[["maxIter"]]), 
+                                                   algorithm = 'DE')$ll))
+  
+  return(list(cost = ll))
+}
+```
+
+```{r}
+# define scenario
+scenario <- list(targetRunner = target_runner,
+                 instances = 1,
+                 maxExperiments = 500,
+                 # Do not create a logFile
+                 logFile = "")
+```
+
+```{r}
+# check to make sure everything is set up correctly
+checkIraceScenario(scenario, parameters = parameters)
+```
+
+```{r}
+# run racing algorithm
+tuned_confs <- irace(scenario = scenario, parameters = parameters)
+```
+
+```{r}
+configurations.print(tuned_confs)
+```
+
+Racing algorithm seems to suggest that maxing out iterations is good, but maybe see diminishing returns for swarm size. 
+
+# Tuning continuous model without subgroup effect
+
